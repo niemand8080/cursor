@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import { ThemeProvider } from "@/components/provider/theme-provider";
-import { CursorProvider } from "@/components/cursor/cursor";
+import { CursorProvider } from "@/components/nexui/cursor";
+import { Header } from "./Header";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -37,6 +38,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <CursorProvider>
+            <Header />
             {children}
           </CursorProvider>
         </ThemeProvider>

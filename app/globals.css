@@ -75,7 +75,9 @@ body {
 @layer base {
   * {
     @apply border-border;
-    cursor: none !important;
+  }
+  ::selection {
+    @apply bg-primary/30;
   }
   .text {
     background-image: var(--foreground-noise);
