@@ -1,11 +1,13 @@
 "use client"
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { MousePointer2 } from 'lucide-react';
 
 type SetStateAction<T> = T | ((prev: T) => T);
 type SetState<T> = (value: SetStateAction<T>) => void;
 
-export const AllCursorVariants = ['default', 'glass', 'ghostly', 'custom1', 'custom2', 'custom3'] as const;
+const disableableElements = ["BUTTON", "FIELDSET", "INPUT", "OPTGROUP", "OPTION", "SELECT", "TEXTAREA"]; // I know
+export const AllCursorVariants = ['default', 'glow', 'glass', 'ghostly', 'custom1', 'custom2', 'custom3'] as const;
 export type CursorVariantType = typeof AllCursorVariants[number];
 
 // They will be the fallback values if no setting for the variant with the name of ___ was found
@@ -18,11 +20,17 @@ export const CursorVariantDefaults = {
   glow: false,
   glowColor: 'hsl(var(--foreground))',
   glowStrength: 10,
+  borderWidth: '1px',
   borderColor: 'hsl(var(--border) / 0.4)',
   activeColor: 'hsl(var(--primary))',
   color: 'hsl(var(--foreground))',
   adjustToFontSize: true,
   textCursorSize: 24,
+  destructiveGlowColor: 'hsl(var(--destructive))',
+  destructiveColor: 'hsl(var(--destructive))',
+  disabledGlowColor: 'hsl(var(--border))',
+  disabledColor: 'hsl(var(--border))',
+  successColor: 'hsl(var(--success))',
 };
 
 type SettingNamesType = keyof typeof CursorVariantDefaults;
@@ -33,12 +41,19 @@ type CursorVariantSettingsType = { [key in CursorVariantType]?: CursorVariantSet
 export const CursorVariantSettingsFallback: CursorVariantSettingsType = {
   glass: {
     invert: 100,
+    hueRotate: 180,
+    blur: true,
+    blurStrength: 2,
+  },
+  glow: {
+    invert: 100,
     grayscale: 100,
     glow: true,
     blur: true,
     blurStrength: 2,
     glowColor: 'hsl(var(--foreground))',
     glowStrength: 10,
+    borderWidth: '0',
   },
   ghostly: {
     invert: 20,
@@ -59,6 +74,10 @@ export interface CursorContextProps {
   setDisabled: SetState<boolean>;
   variant: CursorVariantType;
   setVariant: SetState<CursorVariantType>;
+  resolvedVariant: CursorVariantType;
+  setResolvedVariant: SetState<CursorVariantType>;
+  overwriteVariant: CursorVariantType | undefined;
+  setOverwriteVariant: SetState<CursorVariantType | undefined>;
   cursorPos: CursorPosType;
   setCursorPos: SetState<CursorPosType>;
   customSettings: CursorVariantSettingsType;
@@ -74,9 +93,11 @@ const CursorContext = createContext<CursorContextProps | undefined>(undefined);
 
 export const CursorProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [customSettings, setCustomSettings] = useState<CursorVariantSettingsType>({});
-  const [variant, setVariant] = useState<CursorVariantType>("glass");
+  const [variant, setVariant] = useState<CursorVariantType>("glow");
   const [cursorPos, setCursorPos] = useState<CursorPosType>({ x: 0, y: 0 });
   const [disabled, setDisabled] = useState<boolean>(false);
+  const [overwriteVariant, setOverwriteVariant] = useState<CursorVariantType>()
+  const [resolvedVariant, setResolvedVariant] = useState<CursorVariantType>("default")
   
   const changeCursorSetting = <K extends keyof typeof CursorVariantDefaults>(
     variant: CursorVariantType, 
@@ -94,9 +115,9 @@ export const CursorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const getCursorSetting = (setting: SettingNamesType) => {
-    const variantSettings: CursorVariantSettingValuesType = customSettings[variant];
+    const variantSettings: CursorVariantSettingValuesType = customSettings[resolvedVariant];
     if (variantSettings && variantSettings[setting]) return variantSettings[setting];
-    const fallbackSettings: CursorVariantSettingValuesType = CursorVariantSettingsFallback[variant];
+    const fallbackSettings: CursorVariantSettingValuesType = CursorVariantSettingsFallback[resolvedVariant];
     if (!fallbackSettings || !fallbackSettings[setting]) return CursorVariantDefaults[setting];
     return fallbackSettings[setting]
   }
@@ -120,6 +141,10 @@ export const CursorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [disabled])
 
+  useEffect(() => {
+    setResolvedVariant(overwriteVariant ? overwriteVariant : variant)
+  }, [variant, overwriteVariant])
+
   return (
     <CursorContext.Provider
       value={{
@@ -127,6 +152,10 @@ export const CursorProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setDisabled,
         variant,
         setVariant,
+        resolvedVariant,
+        setResolvedVariant,
+        overwriteVariant,
+        setOverwriteVariant,
         cursorPos,
         setCursorPos,
         customSettings,
@@ -146,16 +175,32 @@ export const useCursor = () => {
   return context
 }
 
-type CursorState = 'default' | 'text' | 'pointer';
+export const CursorToggle = () => {
+  const { disabled, setDisabled } = useCursor();
+  return (
+    <button className={cn("p-2 rounded-md items-center inline-flex")}>
+      <MousePointer2 
+        onClick={() => setDisabled(prev => !prev)}
+        className={cn(
+          "h-[1.2rem] w-[1.2rem] transition-all fill-current",
+          disabled && "opacity-40 fill-none"
+        )}
+      />
+      {/* <Moon className={`absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100`} /> */}
+      <span className="sr-only">Toggle custom cursor</span>
+    </button>
+  )
+}
+
+type CursorState = 'default' | 'text' | 'pointer' | 'destructive' | 'disabled';
 
 export const Cursor = () => {
   const {
     disabled,
+    setOverwriteVariant,
     setCursorPos,
     getCursorSetting,
   } = useCursor();
-
-  if (disabled) return null;
 
   const cursorRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<CursorState>('default');
@@ -166,6 +211,32 @@ export const Cursor = () => {
     if (!getCursorSetting('adjustToFontSize')) {
       const defaultFontSize = getCursorSetting('textCursorSize') as number;
       setFontSize(defaultFontSize);
+    }
+
+    const hasClass = (e: HTMLElement, classNames: string | string[], hasNot?: string[]) => {
+      let valid = false;
+      let element: HTMLElement | null = e;
+      let classList = element.classList.value.split(' ');
+      let maxCount = 50;
+      do {
+        for (const className of (typeof classNames == 'string' ? [classNames] : classNames)) {
+          valid = classList.includes(className)
+          if (!valid) break;
+        }
+        if (element == null || element.tagName == "BODY" || valid) break;
+        element = element.parentElement;
+        classList = element?.classList.value.split(' ') || [];
+        maxCount--;
+        if (maxCount == 0) throw new Error('If you want to check more than 50 parents of en Element. Please increment the value of maxCount in the cursor.tsx file.');
+      } while (maxCount >= 0);
+      
+      if (valid && hasNot) {
+        for (const className of hasNot) {
+          if (classList.includes(className)) return false;
+        }
+      }
+
+      return valid;
     }
 
     const handleMouseMove = (e: MouseEvent) => {
@@ -181,7 +252,6 @@ export const Cursor = () => {
       // State
       const element = document.elementFromPoint(clientX, clientY) as HTMLElement;
       if (element == null) return;
-      const classList = element.classList.value.split(' ');
       const style = window.getComputedStyle(element);
       const name = element.tagName;
       if (getCursorSetting('adjustToFontSize')) {
@@ -189,18 +259,40 @@ export const Cursor = () => {
         setFontSize(fontSize);
       }
 
-      const button = 
-        classList.includes('cursor-pointer') || 
-        name == "BUTTON" || 
-        element.parentElement?.tagName == 'BUTTON' || 
-        element.parentElement?.tagName == "svg" && element.parentElement?.parentElement?.tagName == "BUTTON";
-      const text = classList.includes('cursor-text') || name == "SPAN" || name == "P";
-
-      for (const variant of AllCursorVariants) {
-        console.log(`cursor-variant-${variant}`);
+      let disabled = !!element.ariaDisabled || hasClass(element, 'cursor-disabled');
+      if (disableableElements.includes(name)) {
+        if (element.disabled) {
+          disabled = true;
+        }
       }
+
+      const buttonOnTagName = ["BUTTON", "A"];
+      const textOnTagName = ["SPAN", "P"];
+
+      const destructive =
+        hasClass(element, 'cursor-destructive');
+      const button = 
+        hasClass(element, 'cursor-pointer') || 
+        buttonOnTagName.includes(name) || 
+        buttonOnTagName.includes(element.parentElement?.tagName || "") || 
+        element.parentElement?.tagName == "svg" && buttonOnTagName.includes(element.parentElement?.parentElement?.tagName || "");
+      const text = hasClass(element, 'cursor-text') || textOnTagName.includes(name);
+
+      let newVariant: CursorVariantType | undefined = undefined;
+      for (const variant of AllCursorVariants) {
+        const variantClass = `cursor-variant-${variant}`;
+        if (hasClass(element, variantClass)) {
+          newVariant = variant;
+          break;
+        }
+      }
+      if (newVariant) setOverwriteVariant(newVariant);
+      else setOverwriteVariant(undefined);
       
-      if (button) setState('pointer');
+      
+      if (disabled) setState('disabled');
+      else if (destructive) setState('destructive');
+      else if (button) setState('pointer');
       else if (text) setState('text');
       else setState('default');
     }
@@ -222,7 +314,9 @@ export const Cursor = () => {
       document.removeEventListener('mousedown', handleMouseDown);
       document.removeEventListener('mouseup', handleMouseUp);
     }
-  }, [isActive, setCursorPos]);
+  }, [isActive, setCursorPos, getCursorSetting, setOverwriteVariant]);
+
+  if (disabled) return null;
 
   return (
     <>
@@ -230,24 +324,47 @@ export const Cursor = () => {
         ref={cursorRef}
         aria-hidden="true"
         className={cn(
-          "size-5 rounded-full fixed pointer-events-none border cursor font-extrabold z-50",
+          "size-5 rounded-full fixed pointer-events-none cursor font-extrabold z-50",
           isActive && state != 'text' && "size-4 mt-0.5 ml-0.5",
-          state == 'text' && `w-1 h-8 mx-[0.7rem] -translate-y-[40%] border-0`,
+          state == 'text' && `w-1 h-8 mx-[0.7rem] -translate-y-[40%]`,
           state == 'pointer' && "size-7 -mt-1 -ml-1",
           state == 'pointer' && isActive && "size-6 -mt-0.5 -ml-0.5",
-          getCursorSetting('invert') && "bg-foreground/0",
         )}
         style={{
-          height: `${getCursorSetting('adjustToFontSize') ? state == 'text' ? (isActive && fontSize >= 14 ? fontSize - ((fontSize / 100) * 10) : fontSize) + "px" : '' : getCursorSetting('textCursorSize')}`,
+          height: 
+            `${getCursorSetting('adjustToFontSize') 
+              ? state == 'text' 
+                ? (isActive && fontSize >= 14 
+                  ? fontSize - ((fontSize / 100) * 10) 
+                  : fontSize) + "px" 
+                : '' 
+              : getCursorSetting('textCursorSize')}`,
           transition: 'all 0.15s, top 0s, left 0s', 
           top: "-100px",
           left: "-100px",
-          background: getCursorSetting('invert') ? '' : `${state == 'pointer' || state == 'text' ? getCursorSetting('activeColor') : getCursorSetting('color')}`,
-          borderColor: `${getCursorSetting('borderColor')}`,
-          boxShadow: getCursorSetting('glow') ? `0 0 ${getCursorSetting('glowStrength')}px ${getCursorSetting('glowColor')}` : '',
+          background: 
+            state == 'disabled' 
+              ? `${getCursorSetting('disabledColor')}` 
+              : state == 'destructive'
+                ? `${getCursorSetting('destructiveColor')}`
+                : getCursorSetting('invert')
+                  ? 'rgba(0,0,0,0)' 
+                  : `${state == 'pointer' || state == 'text' 
+                    ? getCursorSetting('activeColor') 
+                    : getCursorSetting('color')}`,
+          border: `${state == 'text' ? '0' : getCursorSetting('borderWidth')} ${getCursorSetting('borderColor')}`,
+          boxShadow: 
+            getCursorSetting('glow') 
+              ? `0 0 ${getCursorSetting('glowStrength')}px 
+                ${state == 'disabled' 
+                  ? getCursorSetting('disabledGlowColor') 
+                  : state == 'destructive'
+                    ? getCursorSetting('destructiveGlowColor')
+                    : getCursorSetting('glowColor')}` 
+              : '',
           backdropFilter: `
             hue-rotate(${getCursorSetting('hueRotate')}deg) 
-            blur(${getCursorSetting('glow') ? getCursorSetting('blurStrength') : '0'}px) 
+            blur(${getCursorSetting('blurStrength')}px) 
             grayscale(${getCursorSetting('grayscale')}%) 
             invert(${getCursorSetting('invert')}%)`.trim().replaceAll('  ', '').replaceAll('\n', ' ')
         }}
